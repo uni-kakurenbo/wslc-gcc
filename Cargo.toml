@@ -1,0 +1,28 @@
+[package]
+name = "wslc-gcc"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.99"
+publish = false
+license = "MIT"
+description = "GCC-compatible compiler commands backed by an explicitly owned or borrowed WSLC session"
+repository = "https://github.com/uni-kakurenbo/wslc-gcc"
+default-run = "wslc-gcc"
+
+[dependencies]
+wslc-runtime = { git = "https://github.com/uni-kakurenbo/wslc-runtime.git", rev = "394ed7e1bf9e42624d74b6a61acea1e1553cae4e" }
+
+[[bin]]
+name = "wslc-gcc"
+path = "src/main.rs"
+
+[[bin]]
+name = "wslc-gcc-run"
+path = "src/run_main.rs"
+
+[lints.rust]
+unsafe_op_in_unsafe_fn = "deny"
+unused_must_use = "deny"
+
+[lints.clippy]
+undocumented_unsafe_blocks = "deny"
