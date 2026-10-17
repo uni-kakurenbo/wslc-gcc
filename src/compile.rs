@@ -1,4 +1,4 @@
-//! Validate source selection and build an argument-only container request.
+//! Build and run C, C++, or assembly programs in a GCC container.
 
 use crate::Result;
 use std::ffi::OsString;
@@ -45,6 +45,7 @@ impl Language {
     }
 }
 
+/// Source files, compiler options, and program arguments for a compile-and-run operation.
 #[derive(Clone, Debug)]
 pub struct Request {
     pub sources: Vec<PathBuf>,
@@ -59,6 +60,7 @@ pub struct Request {
 }
 
 impl Request {
+    /// Default to language inference from source extensions and the standard GCC image.
     pub fn new(sources: Vec<PathBuf>) -> Self {
         Self {
             sources,
@@ -73,6 +75,7 @@ impl Request {
         }
     }
 
+    /// Validate sources and prepare the container arguments for compilation and execution.
     pub fn prepare(&self) -> Result<Prepared> {
         let first = self
             .sources
@@ -151,6 +154,7 @@ impl Request {
     }
 }
 
+/// Validated compile-and-run request ready to execute in a WSLC session.
 pub struct Prepared {
     pub project: PathBuf,
     pub arguments: Vec<OsString>,

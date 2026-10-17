@@ -1,4 +1,4 @@
-//! Compiler arguments are passed to GCC without parsing or adding compiler flags.
+//! Run Linux GCC with the caller's arguments, standard streams, and exit status.
 
 #[cfg(windows)]
 use std::ffi::OsString;
@@ -19,6 +19,8 @@ pub struct Driver {
 
 #[cfg(windows)]
 impl Driver {
+    /// Read the workspace, image, and compiler from the `WSLC_*` environment variables.
+    /// `cwd` must be inside the workspace mounted at `/work`.
     pub fn from_env(cwd: &Path) -> crate::Result<Self> {
         let workspace = std::env::var_os("WSLC_WORKSPACE")
             .map(PathBuf::from)
@@ -64,7 +66,7 @@ impl Driver {
         }
     }
 
-    /// Inherit all three handles. No decoding, banners, or terminal allocation.
+    /// Run GCC with inherited standard input, output, and error handles.
     pub fn run(
         &self,
         context: &Context<'_>,

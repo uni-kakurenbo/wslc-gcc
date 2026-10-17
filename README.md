@@ -1,60 +1,69 @@
 # wslc-gcc
 
-Windows から WSLC 上の Linux GCC を呼ぶ、GCC 互換のコンパイラコマンドです。`-E`、`-S`、`-c`、リンク、問い合わせを GCC に渡し、入出力・終了コード・生成ファイルを返します。コンパイラを指定できるツールから通常の GCC と同じように利用できます。
+Use Linux GCC from Windows through WSL Containers (WSLC). `wslc-gcc` supports preprocessing, assembly output, object compilation, linking, and compiler queries. It forwards GCC arguments, standard streams, exit status, and generated files to the calling build tool.
 
-## 必要な環境とインストール
+Use `wslc-gcc-run` to compile source files and run the resulting Linux program in a container.
 
-x64 Windows、WSL Containers（WSL 2.9.3 以上）、ビルド用の公式 Rust 1.99.0 が必要です。WSLC の基盤には `wslc-runtime` を利用します。初回は検証済み SDK と GCC イメージを取得します。
+## Install
+
+Requires x64 Windows, WSL 2.9.3 or later, and Rust 1.99.0 for the build. The first invocation downloads and verifies the WSLC SDK and downloads the GCC image.
 
 ```sh
-cargo install --path . --locked
+cargo install --git https://github.com/uni-kakurenbo/wslc-gcc.git --locked
 wslc-gcc -dumpmachine
 wslc-gcc --version
 ```
 
-このコマンドの全引数は GCC の引数です。独自の `--compiler-arg`、言語標準の追加、バージョンの強制、生成物の自動実行はありません。`--help` と `--version` も GCC に渡します。
+To install from a checkout, run `cargo install --path . --locked`.
 
-## コンパイルする
+Every `wslc-gcc` argument goes to GCC, including `--help` and `--version`. Select language standards and compiler options with ordinary GCC flags.
 
-プロジェクトのディレクトリで、入力・出力とも相対パスを使います。`-o` の親ディレクトリは呼び出し側で用意します。
+## Compile
+
+Run from the project directory and create the output directory before invoking GCC:
 
 ```sh
-wslc-gcc -std=c11 -O2 -Isrc -S src/runtime.c -o build/runtime.s
-wslc-gcc -std=c11 -c src/main.c -o build/main.o
+wslc-gcc -std=c11 -O2 -Iinclude -S src/main.c -o build/main.s
+wslc-gcc -std=c11 -Iinclude -c src/main.c -o build/main.o
 wslc-gcc build/main.o -lm -o build/program
 wslc-gcc -E -P -x c -
 ```
 
-結果のオブジェクトと実行ファイルは Linux 用です。Windows 上で直接実行しません。
+The last command reads C source from standard input. Generated objects and executables target Linux; run executables in a Linux environment or container.
 
-作業ディレクトリを `/work` に読み書き可能でマウントします。`WSLC_WORKSPACE` で共有するルートを指定すると、その配下のサブディレクトリからも対応する作業ディレクトリで実行できます。相対パスは GCC へそのまま渡すため、パスの区切りには `/` を使います。
+The workspace is mounted read-write at `/work`. It defaults to the current directory. Set `WSLC_WORKSPACE` to a project root to invoke the compiler from subdirectories; the corresponding relative working directory is preserved inside the container.
 
-Windows の絶対パスや UNC パスを GCC の引数へ自動変換する機能はありません。イメージ内の `/usr/include` などの絶対パスは Linux 側の意味のままです。`-I`、`-o`、`-MF`、応答ファイル内のパスもこの契約に従います。診断と依存ファイルも書き換えません。
+Use project-relative paths with forward slashes for sources, outputs, include directories, dependency files, and response files. Absolute Linux paths such as `/usr/include` refer to the container. Windows absolute paths and UNC paths are unsupported as compiler arguments. Diagnostics and dependency files retain the paths reported by GCC.
 
-標準入力・標準出力・標準エラーを TTY なしで中継し、UTF-8 のデコードや改行の変換は行いません。GCC の成功・失敗の終了コードを返します。基盤の失敗は診断を標準エラーへ出し、終了コード1を返します。
+Standard streams are forwarded as bytes with no terminal allocation, UTF-8 decoding, or newline conversion. The command returns GCC's exit status. Session or container failures print a diagnostic to stderr and return exit code 1.
 
-## 環境設定と並列ビルド
+## Configure the compiler
 
-| 環境変数 | 意味 | 既定値 |
+| Environment variable | Purpose | Default |
 | --- | --- | --- |
-| `WSLC_GCC_IMAGE` | GCC を含むイメージ。digest の指定も可能 | docker.io/library/gcc:16.2.0 |
-| `WSLC_GCC_DRIVER` | イメージ内のドライバー | gcc |
-| `WSLC_GCC_TIMEOUT` | 一回の呼び出しの制限秒数 | 1800 |
-| `WSLC_WORKSPACE` | ホストで共有するルート | 作業ディレクトリ |
+| `WSLC_GCC_IMAGE` | Image containing GCC; a digest may be used | docker.io/library/gcc:16.2.0 |
+| `WSLC_GCC_DRIVER` | Compiler executable inside the image | gcc |
+| `WSLC_GCC_TIMEOUT` | Timeout per invocation in seconds | 1800 |
+| `WSLC_WORKSPACE` | Host directory mounted at `/work` | Current directory |
 
-SDK・保存先・既存セッションは `wslc-runtime` の `WSLC_CACHE`、`WSLC_STORAGE`、`WSLC_SESSION` などで設定します。C++ のリンクには `WSLC_GCC_DRIVER=g++` を設定できます。
+Set `WSLC_GCC_DRIVER=g++` for C++ compilation and linking. SDK cache, session storage, and connection settings use the `WSLC_CACHE`, `WSLC_STORAGE`, and `WSLC_SESSION` variables documented by [wslc-runtime](https://github.com/uni-kakurenbo/wslc-runtime#configuration-and-parallel-execution).
 
-単独起動は自分のセッションを所有し、終了時に解放します。同じ保存先を使う単独呼び出しは直列化されます。並列ビルドでは `wslc-runtime` の `wslc-session` などが一つのセッションを保持し、各コンパイラ呼び出しが接続して利用します。
+## Parallel builds
+
+A standalone invocation creates a session and releases it on exit. Invocations sharing the same session storage wait for each other.
+
+For parallel builds, install `wslc-session` and run the build tool inside one shared session:
 
 ```sh
+cargo install --git https://github.com/uni-kakurenbo/wslc-runtime.git --locked wslc-runtime
 wslc-session -- your-build-tool
 ```
 
-接続する側は SDK の取得やセッションの終了を行いません。親が子の完了までセッションを保持します。永続的なサービスや既定セッションは必要ありません。
+The launcher passes connection variables to its children. Each `wslc-gcc` invocation connects to that session, allowing multiple compiler processes to run concurrently. The launcher keeps the session alive until the build command finishes and then releases it.
 
-## コンパイルして実行する
+## Compile and run
 
-別コマンドの `wslc-gcc-run` は言語・規格の指定、一時出力、実行引数、TTY などを扱います。同じリポジトリの GCC 実行 API と `wslc-runtime` を使い、GCC 互換コマンドの引数とは分けています。
+`wslc-gcc-run` compiles C, C++, or assembly source and runs the result in a container:
 
 ```sh
 wslc-gcc-run examples/hello.c
@@ -63,9 +72,11 @@ wslc-gcc-run main.s
 wslc-gcc-run --help
 ```
 
-実行用のプロジェクトは `/src` に読み取り専用でマウントし、コンパイル結果はコンテナの一時領域に置きます。`--project-dir`、`--compiler-arg`、`--run-arg`、`--image`、`--interactive`、`--tty` を使えます。Rust からは `compile::Request` を利用できます。Linux の既存環境向けには `native` の実行補助を提供します。
+The source directory is mounted read-only at `/src`, and compiler outputs go to a temporary container directory. The source extension selects the language; default standards are C23 and C++23. Use `--project-dir`, `--language`, `--standard`, `--compiler-arg`, and `--run-arg` to configure compilation and program arguments. `--image`, `--interactive`, and `--tty` configure the container and terminal.
 
-## 検証
+Rust callers can use `driver::Driver` to invoke GCC in a WSLC session or `compile::Request::prepare` followed by `compile::Prepared::run` to compile and run a program. The `native` module runs host commands and assembles source with the host's GCC.
+
+## Verify
 
 ```sh
 cargo test --locked
@@ -74,12 +85,6 @@ cargo clippy --locked --all-targets -- -D warnings
 cargo test --locked -- --ignored --test-threads 1
 ```
 
-最後のコマンドは実際の WSLC を使います。同じイメージの GCC に直接渡した場合との出力・診断・終了コードの一致、標準入力、不正 UTF-8、空白と日本語を含むパス、応答ファイル、依存ファイル、アセンブリと ELF の生成、既存セッション内の並列コンパイルを検証します。合成した C/C++/アセンブリだけを使い、特定の利用プロジェクトには依存しません。
+The last command uses a real WSLC session. It compares output, diagnostics, and exit status against GCC invoked directly in the same image. Tests also cover standard input, invalid UTF-8, paths containing spaces and Unicode, response files, dependency files, assembly and ELF generation, and parallel compiler calls in a shared session.
 
-[MIT License](LICENSE)。実行基盤は独立した `wslc-runtime` リポジトリにあります。
-
-## Install from Git
-
-```sh
-cargo install --git https://github.com/uni-kakurenbo/wslc-gcc --locked
-```
+[MIT License](LICENSE).

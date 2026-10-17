@@ -1,4 +1,4 @@
-//! GCC and process execution inside an existing Linux environment or on the host.
+//! Run host commands and assemble programs with the host's GCC.
 
 use crate::Result;
 use std::ffi::OsString;
